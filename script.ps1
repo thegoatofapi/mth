@@ -64,22 +64,40 @@ try {
         # Lancer dans un thread STA pour la GUI
         $thread = New-Object System.Threading.Thread([System.Threading.ThreadStart]{
             try {
+                # S'assurer que les styles visuels sont activés
+                [System.Windows.Forms.Application]::EnableVisualStyles()
+                [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
+                
+                # Lancer l'application
                 $entryPoint.Invoke($null, @())
             } catch {
-                Write-Host "Erreur: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "Erreur dans le thread: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "StackTrace: $($_.Exception.StackTrace)" -ForegroundColor Red
             }
         })
         $thread.SetApartmentState([System.Threading.ApartmentState]::STA)
         $thread.IsBackground = $false
         $thread.Start()
         
+        # Attendre un peu pour voir si l'application démarre
+        Start-Sleep -Milliseconds 500
+        
         Write-Host "Application lancee!" -ForegroundColor Green
         Write-Host ""
-        Write-Host "Fermez cette fenetre pour arreter l'application." -ForegroundColor Yellow
+        Write-Host "L'autoclicker devrait etre ouvert." -ForegroundColor Cyan
+        Write-Host "Fermez cette fenetre PowerShell pour arreter l'application." -ForegroundColor Yellow
         Write-Host ""
         
         # Attendre que le thread se termine (PowerShell reste ouvert)
-        $thread.Join()
+        # Cela maintient l'application active tant qu'elle tourne
+        while ($thread.IsAlive) {
+            Start-Sleep -Milliseconds 100
+        }
+        
+        # Si le thread s'est terminé
+        if (-not $thread.IsAlive) {
+            Write-Host "Application arretee." -ForegroundColor Yellow
+        }
         
         Write-Host "Application arretee." -ForegroundColor Yellow
     } else {
