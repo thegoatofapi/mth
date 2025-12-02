@@ -2,7 +2,7 @@
 
 # Configuration GitHub
 $githubUser = "thegoatofapi"
-$githubRepo = "Clicker"
+$githubRepo = "mth"
 $githubBranch = "main"
 
 # Fonction pour exécuter de manière furtive
