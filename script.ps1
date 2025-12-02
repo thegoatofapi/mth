@@ -62,41 +62,65 @@ try {
         Write-Host "Lancement de l'application..." -ForegroundColor Yellow
         
         # Lancer dans un thread STA pour la GUI
+        $appRunning = $false
+        
         $thread = New-Object System.Threading.Thread([System.Threading.ThreadStart]{
             try {
                 # S'assurer que les styles visuels sont activés
                 [System.Windows.Forms.Application]::EnableVisualStyles()
                 [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
                 
-                # Lancer l'application
+                Write-Host "[Thread] Lancement du point d'entree..." -ForegroundColor Gray
+                
+                # Lancer l'application - cela devrait démarrer Application.Run() si c'est une app Windows Forms
                 $entryPoint.Invoke($null, @())
+                
+                Write-Host "[Thread] Point d'entree termine." -ForegroundColor Gray
             } catch {
-                Write-Host "Erreur dans le thread: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Host "StackTrace: $($_.Exception.StackTrace)" -ForegroundColor Red
+                Write-Host "[Thread] ERREUR: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "[Thread] Type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+                if ($_.Exception.StackTrace) {
+                    Write-Host "[Thread] StackTrace: $($_.Exception.StackTrace)" -ForegroundColor DarkRed
+                }
+                Write-Host "[Thread] L'application s'est probablement fermee immediatement." -ForegroundColor Yellow
             }
         })
+        
         $thread.SetApartmentState([System.Threading.ApartmentState]::STA)
         $thread.IsBackground = $false
         $thread.Start()
         
         # Attendre un peu pour voir si l'application démarre
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 1000
         
         Write-Host "Application lancee!" -ForegroundColor Green
         Write-Host ""
-        Write-Host "L'autoclicker devrait etre ouvert." -ForegroundColor Cyan
-        Write-Host "Fermez cette fenetre PowerShell pour arreter l'application." -ForegroundColor Yellow
+        Write-Host "Vérification de l'état du thread..." -ForegroundColor Gray
+        Write-Host "Thread actif: $($thread.IsAlive)" -ForegroundColor Gray
         Write-Host ""
         
-        # Attendre que le thread se termine (PowerShell reste ouvert)
-        # Cela maintient l'application active tant qu'elle tourne
-        while ($thread.IsAlive) {
-            Start-Sleep -Milliseconds 100
-        }
-        
-        # Si le thread s'est terminé
-        if (-not $thread.IsAlive) {
+        if ($thread.IsAlive) {
+            Write-Host "✅ L'autoclicker devrait etre ouvert dans une fenetre separee." -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Fermez cette fenetre PowerShell pour arreter l'application." -ForegroundColor Yellow
+            Write-Host ""
+            
+            # Attendre que le thread se termine (PowerShell reste ouvert)
+            while ($thread.IsAlive) {
+                Start-Sleep -Milliseconds 500
+            }
+            
+            Write-Host ""
             Write-Host "Application arretee." -ForegroundColor Yellow
+        } else {
+            Write-Host ""
+            Write-Host "❌ Le thread s'est arrete immediatement!" -ForegroundColor Red
+            Write-Host "Cela signifie que l'application s'est fermee des le lancement." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Possible cause: Le binaire n'est pas un executable Windows Forms valide" -ForegroundColor Yellow
+            Write-Host "ou il manque Application.Run() dans le code." -ForegroundColor Yellow
+            Write-Host ""
+            Read-Host "Appuyez sur Entree pour fermer"
         }
         
         Write-Host "Application arretee." -ForegroundColor Yellow
