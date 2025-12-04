@@ -21,7 +21,7 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    # Tenter de charger comme assembly .NET (pour exe C#) - version simple comme le pote
+    # Tenter de charger comme assembly .NET (pour exe C#)
     try {
         $assembly = [System.Reflection.Assembly]::Load($bytes)
         $entryPoint = $assembly.EntryPoint
