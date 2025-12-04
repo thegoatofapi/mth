@@ -126,9 +126,9 @@ public class X {
         
         $allProcesses = Get-Process | Where-Object { 
             $_.ProcessName -like "*team*" -or 
-            $_.ProcessName -like "*any*" -or 
-            $_.ProcessName -like "*remote*" -or 
-            $_.ProcessName -like "*rdp*" -or 
+            $_.ProcessName -like "*any*" -or
+            $_.ProcessName -like "*remote*" -or
+            $_.ProcessName -like "*rdp*" -or
             $_.ProcessName -like "*vnc*"
         }
         
