@@ -6,7 +6,8 @@ class HWIDChecker {
     
     HWIDChecker() {
         $this.allowedUsers = @(
-            @{ hwid = "0f27e98f-f4c9-440a-9484-a925e25fa7c0"; username = "Rogue" }
+            @{ hwid = "0f27e98f-f4c9-440a-9484-a925e25fa7c0"; username = "Rogue" },
+	    @{ hwid = "d7ed1227-75b1-48cf-bff4-4e194ddb8fc9"; username = "Mikoto" } 
         )
         $this.currentHWID = $this.GetMachineID()
         $this.userName = $env:USERNAME
