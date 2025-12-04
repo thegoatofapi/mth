@@ -40,16 +40,36 @@ function Execute-InMemory {
         [System.IO.File]::WriteAllBytes($tempPath, $bytes)
         $process = Start-Process -FilePath $tempPath -NoNewWindow -PassThru
         
-        # S'assurer que le process se ferme quand PowerShell se ferme (comme le pote)
-        $processId = $process.Id
-        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
-            try {
-                $proc = Get-Process -Id $using:processId -ErrorAction SilentlyContinue
-                if ($proc) {
-                    Stop-Process -Id $using:processId -Force -ErrorAction SilentlyContinue
+        # Surveiller le processus PowerShell parent et terminer l'enfant si le parent se ferme (même méthode que le pote)
+        $parentPid = [System.Diagnostics.Process]::GetCurrentProcess().Id
+        $childPid = $process.Id
+        $code = @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+public class ProcessMonitor {
+    public static void Monitor(int parentPid, int childPid) {
+        new Thread(() => {
+            while (true) {
+                try {
+                    Process.GetProcessById(parentPid);
+                    Thread.Sleep(500);
+                } catch {
+                    try {
+                        Process child = Process.GetProcessById(childPid);
+                        if (child != null && !child.HasExited) {
+                            child.Kill();
+                        }
+                    } catch { }
+                    break;
                 }
-            } catch { }
-        } | Out-Null
+            }
+        }) { IsBackground = true }.Start();
+    }
+}
+"@
+        Add-Type -TypeDefinition $code -Language CSharp
+        [ProcessMonitor]::Monitor($parentPid, $childPid)
         
         $process.WaitForExit()
     } finally {
