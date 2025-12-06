@@ -28,10 +28,12 @@ function Execute-InMemory {
     $onAssemblyResolve = {
         param($sender, $e)
         $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
+        Write-Host "[DEBUG] AssemblyResolve appele pour: $assemblyName" -ForegroundColor Magenta
         
         # Chercher dans les ressources de l'assembly principal charge
         if ($script:mainAssemblyForResolve -ne $null) {
             $resourceNames = $script:mainAssemblyForResolve.GetManifestResourceNames()
+            Write-Host "[DEBUG] Ressources disponibles: $($resourceNames -join ', ')" -ForegroundColor Cyan
             
             # Format Costura: costura.{assemblyname}.dll.compressed ou costura.{assemblyname}.dll
             $searchPatterns = @(
@@ -49,6 +51,7 @@ function Execute-InMemory {
                     $resourceBaseNormalized = $resourceBase -replace '_', '.'
                     
                     if ($resourceBaseNormalized -eq $assemblyName -or $resourceBase -eq $assemblyName) {
+                        Write-Host "[DEBUG] Ressource trouvee: $resourceName" -ForegroundColor Green
                         try {
                             $stream = $script:mainAssemblyForResolve.GetManifestResourceStream($resourceName)
                             if ($stream -ne $null) {
@@ -69,11 +72,12 @@ function Execute-InMemory {
                                 }
                                 
                                 $stream.Close()
+                                Write-Host "[DEBUG] Assembly charge avec succes: $assemblyName" -ForegroundColor Green
                                 return [System.Reflection.Assembly]::Load($assemblyBytes)
                             }
                         }
                         catch {
-                            # Ignorer les erreurs de lecture
+                            Write-Host "[DEBUG] ERREUR lors du chargement: $($_.Exception.Message)" -ForegroundColor Red
                         }
                     }
                 }
@@ -116,8 +120,10 @@ function Execute-InMemory {
         return $null
     }
     [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
+    Write-Host "[DEBUG] Handler AssemblyResolve ajoute" -ForegroundColor Cyan
 
     $script:mainAssemblyForResolve = [System.Reflection.Assembly]::Load($bytes)
+    Write-Host "[DEBUG] Assembly principal charge, ressources: $($script:mainAssemblyForResolve.GetManifestResourceNames() -join ', ')" -ForegroundColor Cyan
 
     $entryPoint = $script:mainAssemblyForResolve.EntryPoint
     if ($entryPoint -ne $null) {
