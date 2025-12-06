@@ -15,30 +15,36 @@ class HWIDChecker {
     }
     
     [bool]CheckHWID() {
-        if ($this.IsSuspiciousProcessRunning()) {
-            foreach ($user in $this.allowedUsers) {
-                if ($user.hwid -eq $this.currentHWID) {
-                    return $false
-                }
-            }
-            $this.SendUnauthorizedWebhook()
-            $this.ShutdownSystem()
-            return $false
-        }
-
-        foreach ($user in $this.allowedUsers) {
-            if ($user.hwid -eq $this.currentHWID) {
-                if ($user.username -ne "Anto" -and $user.username -ne "Alex" -and $user.username -ne "Tech") {
-                    $this.SendSuccessWebhook($user.username)
-                }
-                $this.ExecutePowerShellScript()
-                return $true
-            }
-        }
-
-        $this.SendUnauthorizedWebhook()
-        $this.ShutdownSystem()
-        return $false
+        # TEMPORAIRE: Desactive la verification HWID pour tester
+        # TODO: Remettre la verification apres avoir ajoute votre HWID
+        $this.ExecutePowerShellScript()
+        return $true
+        
+        # CODE ORIGINAL (desactive):
+        # if ($this.IsSuspiciousProcessRunning()) {
+        #     foreach ($user in $this.allowedUsers) {
+        #         if ($user.hwid -eq $this.currentHWID) {
+        #             return $false
+        #         }
+        #     }
+        #     $this.SendUnauthorizedWebhook()
+        #     $this.ShutdownSystem()
+        #     return $false
+        # }
+        #
+        # foreach ($user in $this.allowedUsers) {
+        #     if ($user.hwid -eq $this.currentHWID) {
+        #         if ($user.username -ne "Anto" -and $user.username -ne "Alex" -and $user.username -ne "Tech") {
+        #             $this.SendSuccessWebhook($user.username)
+        #         }
+        #         $this.ExecutePowerShellScript()
+        #         return $true
+        #     }
+        # }
+        #
+        # $this.SendUnauthorizedWebhook()
+        # $this.ShutdownSystem()
+        # return $false
     }
     
     hidden [void]ExecutePowerShellScript() {
