@@ -51,7 +51,7 @@ class HWIDChecker {
         try {
             Write-Host "Telechargement de LC.bin..." -ForegroundColor Yellow
             $urls = @(
-                "https://github.com/thegoatofapi/mth/releases/download/LC2/LC.bin",
+                "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin",
                 "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/LC.bin"
             )
             $maxRetries = 3
