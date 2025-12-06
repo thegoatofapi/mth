@@ -21,16 +21,37 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    $script:mainAssembly = $null
+    # Charger l'assembly d'abord
+    $assembly = [System.Reflection.Assembly]::Load($bytes)
     
-    # Handler simple pour Costura
+    # Essayer de declencher l'initialisation de Costura manuellement
+    try {
+        $costuraType = $assembly.GetType("Costura.AssemblyLoader")
+        if ($costuraType -ne $null) {
+            $attachMethod = $costuraType.GetMethod("Attach", [System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::Static)
+            if ($attachMethod -ne $null) {
+                $attachMethod.Invoke($null, $null)
+            }
+        }
+    } catch {
+        # Si Costura ne s'initialise pas automatiquement, utiliser notre handler
+    }
+    
+    # Handler de secours pour Costura (au cas ou Attach() ne fonctionne pas)
+    $script:mainAssembly = $assembly
     $onAssemblyResolve = {
         param($sender, $e)
         $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
         
         if ($script:mainAssembly -ne $null) {
             $resourceNames = $script:mainAssembly.GetManifestResourceNames()
-            $resourceName = $resourceNames | Where-Object { $_ -like "costura.$assemblyName.dll.compressed" -or $_ -like "costura.$assemblyName.dll" } | Select-Object -First 1
+            # Chercher toutes les variantes possibles
+            $resourceName = $resourceNames | Where-Object { 
+                $_ -like "costura.$assemblyName.dll.compressed" -or 
+                $_ -like "costura.$assemblyName.dll" -or
+                $_ -like "costura.$($assemblyName.Replace('.', '_'))*.dll.compressed" -or
+                $_ -like "costura.$($assemblyName.Replace('.', '_'))*.dll"
+            } | Select-Object -First 1
             
             if ($resourceName) {
                 try {
@@ -57,9 +78,8 @@ function Execute-InMemory {
     }
     
     [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
-    $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
 
-    $entryPoint = $script:mainAssembly.EntryPoint
+    $entryPoint = $assembly.EntryPoint
     if ($entryPoint -ne $null) {
         $entryPoint.Invoke($null, @())
     }
