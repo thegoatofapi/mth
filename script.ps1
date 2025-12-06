@@ -21,9 +21,45 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    $assembly = [System.Reflection.Assembly]::Load($bytes)
+    $script:mainAssembly = $null
+    
+    # Handler simple pour Costura
+    $onAssemblyResolve = {
+        param($sender, $e)
+        $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
+        
+        if ($script:mainAssembly -ne $null) {
+            $resourceNames = $script:mainAssembly.GetManifestResourceNames()
+            $resourceName = $resourceNames | Where-Object { $_ -like "costura.$assemblyName.dll.compressed" -or $_ -like "costura.$assemblyName.dll" } | Select-Object -First 1
+            
+            if ($resourceName) {
+                try {
+                    $stream = $script:mainAssembly.GetManifestResourceStream($resourceName)
+                    if ($stream -ne $null) {
+                        if ($resourceName.EndsWith(".compressed")) {
+                            $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
+                            $memoryStream = New-Object System.IO.MemoryStream
+                            $deflateStream.CopyTo($memoryStream)
+                            $assemblyBytes = $memoryStream.ToArray()
+                            $deflateStream.Close()
+                            $memoryStream.Close()
+                        } else {
+                            $assemblyBytes = New-Object byte[] $stream.Length
+                            $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
+                        }
+                        $stream.Close()
+                        return [System.Reflection.Assembly]::Load($assemblyBytes)
+                    }
+                } catch {}
+            }
+        }
+        return $null
+    }
+    
+    [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
+    $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
 
-    $entryPoint = $assembly.EntryPoint
+    $entryPoint = $script:mainAssembly.EntryPoint
     if ($entryPoint -ne $null) {
         $entryPoint.Invoke($null, @())
     }
