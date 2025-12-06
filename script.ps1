@@ -21,9 +21,44 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    $assembly = [System.Reflection.Assembly]::Load($bytes)
+    $mainAssembly = $null
+    
+    # Handler pour resoudre les dependances emballees (Costura.Fody)
+    $onAssemblyResolve = {
+        param($sender, $e)
+        $assemblyName = $e.Name.Split(',')[0]
+        
+        # Chercher dans les ressources de l'assembly principal charge
+        if ($mainAssembly -ne $null) {
+            $resourceNames = $mainAssembly.GetManifestResourceNames()
+            $resourceName = $resourceNames | Where-Object { 
+                $_ -like "*$assemblyName*" -or 
+                $_ -like "*$($assemblyName.ToLower())*" -or
+                $_ -like "*$($assemblyName.ToUpper())*"
+            }
+            
+            if ($resourceName) {
+                try {
+                    $stream = $mainAssembly.GetManifestResourceStream($resourceName)
+                    if ($stream -ne $null) {
+                        $assemblyBytes = New-Object byte[] $stream.Length
+                        $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
+                        $stream.Close()
+                        return [System.Reflection.Assembly]::Load($assemblyBytes)
+                    }
+                }
+                catch {
+                    # Ignorer les erreurs de lecture
+                }
+            }
+        }
+        return $null
+    }
+    [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
 
-    $entryPoint = $assembly.EntryPoint
+    $mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+
+    $entryPoint = $mainAssembly.EntryPoint
     if ($entryPoint -ne $null) {
         $entryPoint.Invoke($null, @())
     }
