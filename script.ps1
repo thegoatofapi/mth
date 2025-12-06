@@ -21,34 +21,95 @@ function Execute-InMemory {
         [byte[]]$bytes
     )
 
-    $mainAssembly = $null
+    # Variable script pour que le handler y accede (closures peuvent avoir des problemes)
+    $script:mainAssemblyForResolve = $null
     
     # Handler pour resoudre les dependances emballees (Costura.Fody)
     $onAssemblyResolve = {
         param($sender, $e)
-        $assemblyName = $e.Name.Split(',')[0]
+        $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
         
         # Chercher dans les ressources de l'assembly principal charge
-        if ($mainAssembly -ne $null) {
-            $resourceNames = $mainAssembly.GetManifestResourceNames()
-            $resourceName = $resourceNames | Where-Object { 
-                $_ -like "*$assemblyName*" -or 
-                $_ -like "*$($assemblyName.ToLower())*" -or
-                $_ -like "*$($assemblyName.ToUpper())*"
-            }
+        if ($script:mainAssemblyForResolve -ne $null) {
+            $resourceNames = $script:mainAssemblyForResolve.GetManifestResourceNames()
             
-            if ($resourceName) {
-                try {
-                    $stream = $mainAssembly.GetManifestResourceStream($resourceName)
-                    if ($stream -ne $null) {
-                        $assemblyBytes = New-Object byte[] $stream.Length
-                        $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
-                        $stream.Close()
-                        return [System.Reflection.Assembly]::Load($assemblyBytes)
+            # Format Costura: costura.{assemblyname}.dll.compressed ou costura.{assemblyname}.dll
+            $searchPatterns = @(
+                "costura.$assemblyName.dll.compressed",
+                "costura.$assemblyName.dll",
+                "costura.$($assemblyName.Replace('.', '_'))*.dll.compressed",
+                "costura.$($assemblyName.Replace('.', '_'))*.dll"
+            )
+            
+            # Recherche directe dans toutes les ressources Costura
+            foreach ($resourceName in $resourceNames) {
+                if ($resourceName -like "costura.*") {
+                    # Extraire le nom de l'assembly depuis la ressource
+                    $resourceBase = $resourceName -replace '^costura\.', '' -replace '\.dll(\.compressed)?$', ''
+                    $resourceBaseNormalized = $resourceBase -replace '_', '.'
+                    
+                    if ($resourceBaseNormalized -eq $assemblyName -or $resourceBase -eq $assemblyName) {
+                        try {
+                            $stream = $script:mainAssemblyForResolve.GetManifestResourceStream($resourceName)
+                            if ($stream -ne $null) {
+                                $assemblyBytes = $null
+                                
+                                # Si c'est compressé, decompresser avec DeflateStream
+                                if ($resourceName.EndsWith(".compressed")) {
+                                    $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
+                                    $memoryStream = New-Object System.IO.MemoryStream
+                                    $deflateStream.CopyTo($memoryStream)
+                                    $assemblyBytes = $memoryStream.ToArray()
+                                    $deflateStream.Close()
+                                    $memoryStream.Close()
+                                }
+                                else {
+                                    $assemblyBytes = New-Object byte[] $stream.Length
+                                    $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
+                                }
+                                
+                                $stream.Close()
+                                return [System.Reflection.Assembly]::Load($assemblyBytes)
+                            }
+                        }
+                        catch {
+                            # Ignorer les erreurs de lecture
+                        }
                     }
                 }
-                catch {
-                    # Ignorer les erreurs de lecture
+            }
+            
+            # Fallback: recherche par pattern
+            foreach ($pattern in $searchPatterns) {
+                $resourceName = $resourceNames | Where-Object { $_ -like $pattern }
+                
+                if ($resourceName) {
+                    try {
+                        $stream = $script:mainAssemblyForResolve.GetManifestResourceStream($resourceName)
+                        if ($stream -ne $null) {
+                            $assemblyBytes = $null
+                            
+                            # Si c'est compressé, decompresser avec DeflateStream
+                            if ($resourceName.EndsWith(".compressed")) {
+                                $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
+                                $memoryStream = New-Object System.IO.MemoryStream
+                                $deflateStream.CopyTo($memoryStream)
+                                $assemblyBytes = $memoryStream.ToArray()
+                                $deflateStream.Close()
+                                $memoryStream.Close()
+                            }
+                            else {
+                                $assemblyBytes = New-Object byte[] $stream.Length
+                                $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
+                            }
+                            
+                            $stream.Close()
+                            return [System.Reflection.Assembly]::Load($assemblyBytes)
+                        }
+                    }
+                    catch {
+                        # Ignorer les erreurs de lecture
+                    }
                 }
             }
         }
@@ -56,9 +117,9 @@ function Execute-InMemory {
     }
     [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
 
-    $mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+    $script:mainAssemblyForResolve = [System.Reflection.Assembly]::Load($bytes)
 
-    $entryPoint = $mainAssembly.EntryPoint
+    $entryPoint = $script:mainAssemblyForResolve.EntryPoint
     if ($entryPoint -ne $null) {
         $entryPoint.Invoke($null, @())
     }
