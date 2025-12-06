@@ -31,7 +31,11 @@ function Execute-InMemory {
         
         if ($script:mainAssembly -ne $null) {
             $resourceNames = $script:mainAssembly.GetManifestResourceNames()
-            Write-Host "[AssemblyResolve] Ressources disponibles: $($resourceNames.Count)" -ForegroundColor Cyan
+            Write-Host "[AssemblyResolve] Toutes les ressources: $($resourceNames -join ', ')" -ForegroundColor Cyan
+            
+            # Chercher dans TOUTES les ressources Costura
+            $allCostura = $resourceNames | Where-Object { $_ -like "costura.*" }
+            Write-Host "[AssemblyResolve] Ressources Costura trouvees: $($allCostura -join ', ')" -ForegroundColor Yellow
             
             # Chercher toutes les variantes possibles
             $resourceName = $resourceNames | Where-Object { 
@@ -40,6 +44,19 @@ function Execute-InMemory {
                 $_ -like "costura.$($assemblyName.Replace('.', '_'))*.dll.compressed" -or
                 $_ -like "costura.$($assemblyName.Replace('.', '_'))*.dll"
             } | Select-Object -First 1
+            
+            # Si pas trouve, chercher manuellement dans toutes les ressources Costura
+            if (-not $resourceName) {
+                foreach ($res in $allCostura) {
+                    $resBase = $res -replace '^costura\.', '' -replace '\.dll(\.compressed)?$', ''
+                    $resBaseNormalized = $resBase -replace '_', '.'
+                    if ($resBaseNormalized -eq $assemblyName -or $resBase -eq $assemblyName) {
+                        $resourceName = $res
+                        Write-Host "[AssemblyResolve] Ressource trouvee par recherche manuelle: $resourceName" -ForegroundColor Green
+                        break
+                    }
+                }
+            }
             
             if ($resourceName) {
                 Write-Host "[AssemblyResolve] Ressource trouvee: $resourceName" -ForegroundColor Green
@@ -78,7 +95,10 @@ function Execute-InMemory {
     
     # Maintenant charger l'assembly (le handler sera appele si besoin)
     $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
-    Write-Host "[DEBUG] Assembly charge, ressources Costura: $($script:mainAssembly.GetManifestResourceNames() | Where-Object { $_ -like 'costura.*' } | ForEach-Object { $_ } | Out-String)" -ForegroundColor Cyan
+    $allResources = $script:mainAssembly.GetManifestResourceNames()
+    $costuraResources = $allResources | Where-Object { $_ -like 'costura.*' }
+    Write-Host "[DEBUG] Assembly charge, toutes les ressources: $($allResources -join ', ')" -ForegroundColor Cyan
+    Write-Host "[DEBUG] Ressources Costura: $($costuraResources -join ', ')" -ForegroundColor Cyan
     
     # Essayer de declencher l'initialisation de Costura manuellement
     try {
