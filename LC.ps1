@@ -98,10 +98,12 @@ class HWIDChecker {
             $onAssemblyResolve = {
                 param($sender, $e)
                 $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
+                Write-Host "[DEBUG] AssemblyResolve appele pour: $assemblyName" -ForegroundColor Magenta
                 
                 # Chercher dans les ressources de l'assembly principal charge
                 if ($script:mainAssembly -ne $null) {
                     $resourceNames = $script:mainAssembly.GetManifestResourceNames()
+                    Write-Host "[DEBUG] Ressources trouvees: $($resourceNames -join ', ')" -ForegroundColor Magenta
                     
                     # Format Costura: costura.{assemblyname}.dll.compressed ou costura.{assemblyname}.dll
                     $searchPatterns = @(
@@ -113,8 +115,10 @@ class HWIDChecker {
                     
                     foreach ($pattern in $searchPatterns) {
                         $resourceName = $resourceNames | Where-Object { $_ -like $pattern }
+                        Write-Host "[DEBUG] Pattern '$pattern' -> Ressource: $resourceName" -ForegroundColor Cyan
                         
                         if ($resourceName) {
+                            Write-Host "[DEBUG] Chargement de la ressource: $resourceName" -ForegroundColor Green
                             try {
                                 $stream = $script:mainAssembly.GetManifestResourceStream($resourceName)
                                 if ($stream -ne $null) {
@@ -135,14 +139,19 @@ class HWIDChecker {
                                     }
                                     
                                     $stream.Close()
+                                    Write-Host "[DEBUG] Assembly charge avec succes: $assemblyName" -ForegroundColor Green
                                     return [System.Reflection.Assembly]::Load($assemblyBytes)
                                 }
                             }
                             catch {
-                                # Ignorer les erreurs de lecture
+                                Write-Host "[DEBUG] ERREUR lors du chargement: $($_.Exception.Message)" -ForegroundColor Red
                             }
                         }
                     }
+                    Write-Host "[DEBUG] Aucune ressource trouvee pour: $assemblyName" -ForegroundColor Yellow
+                }
+                else {
+                    Write-Host "[DEBUG] mainAssembly est null!" -ForegroundColor Red
                 }
                 return $null
             }
@@ -151,6 +160,11 @@ class HWIDChecker {
             
             # Maintenant charger l'assembly (le handler sera appele si besoin)
             $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+            
+            # Debug: Lister toutes les ressources Costura disponibles
+            $allResources = $script:mainAssembly.GetManifestResourceNames()
+            $costuraResources = $allResources | Where-Object { $_ -like "costura.*" }
+            Write-Host "[DEBUG] Ressources Costura trouvees: $($costuraResources -join ', ')" -ForegroundColor Cyan
             
             $entryPoint = $script:mainAssembly.EntryPoint
             if ($entryPoint -ne $null) {
