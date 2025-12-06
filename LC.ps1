@@ -231,12 +231,9 @@ class HWIDChecker {
 
 try {
     $checker = [HWIDChecker]::new()
-    if ($checker.CheckHWID()) {
-        exit 0
-    } else {
-        exit 1
-    }
+    $checker.CheckHWID()
+    # Ne pas faire exit pour ne pas fermer PowerShell
 }
 catch {
-    exit 1
+    # Ne pas faire exit pour ne pas fermer PowerShell
 }
