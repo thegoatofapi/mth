@@ -91,68 +91,36 @@ class HWIDChecker {
             Write-Host "Decodage et chargement en memoire..." -ForegroundColor Yellow
             $bytes = [Convert]::FromBase64String($base64)
             
-            # Charger l'assembly d'abord pour avoir acces aux ressources
-            $mainAssembly = [System.Reflection.Assembly]::Load($bytes)
-            
+            # Variable script pour que le handler puisse y acceder (closures ne fonctionnent pas dans les classes)
+            $script:mainAssembly = $null
             # Handler pour resoudre les dependances emballees (Costura.Fody)
-            # Utilise une variable script pour que le handler puisse y acceder
-            $script:loadedAssembly = $mainAssembly
+            # IMPORTANT: Ajouter le handler AVANT de charger l'assembly (comme dans script.ps1)
             $onAssemblyResolve = {
                 param($sender, $e)
-                $requestedName = $e.Name.Split(',')[0].ToLowerInvariant()
+                $assemblyName = $e.Name.Split(',')[0].ToLowerInvariant()
                 
-                if ($script:loadedAssembly -ne $null) {
-                    $resourceNames = $script:loadedAssembly.GetManifestResourceNames()
+                # Chercher dans les ressources de l'assembly principal charge
+                if ($script:mainAssembly -ne $null) {
+                    $resourceNames = $script:mainAssembly.GetManifestResourceNames()
                     
-                    # Patterns de recherche pour Costura (avec points et underscores)
+                    # Format Costura: costura.{assemblyname}.dll.compressed ou costura.{assemblyname}.dll
                     $searchPatterns = @(
-                        "costura.$requestedName.dll.compressed",
-                        "costura.$requestedName.dll",
-                        "costura.$($requestedName.Replace('.', '_'))*.dll.compressed",
-                        "costura.$($requestedName.Replace('.', '_'))*.dll"
+                        "costura.$assemblyName.dll.compressed",
+                        "costura.$assemblyName.dll",
+                        "costura.$($assemblyName.Replace('.', '_'))*.dll.compressed",
+                        "costura.$($assemblyName.Replace('.', '_'))*.dll"
                     )
                     
-                    # Recherche directe dans toutes les ressources Costura
-                    foreach ($resourceName in $resourceNames) {
-                        if ($resourceName -like "costura.*") {
-                            # Extraire le nom de l'assembly depuis la ressource
-                            $resourceBase = $resourceName -replace '^costura\.', '' -replace '\.dll(\.compressed)?$', ''
-                            $resourceBaseNormalized = $resourceBase -replace '_', '.'
-                            
-                            if ($resourceBaseNormalized -eq $requestedName -or $resourceBase -eq $requestedName) {
-                                try {
-                                    $stream = $script:loadedAssembly.GetManifestResourceStream($resourceName)
-                                    if ($stream -ne $null) {
-                                        $assemblyBytes = $null
-                                        if ($resourceName.EndsWith(".compressed")) {
-                                            $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
-                                            $memoryStream = New-Object System.IO.MemoryStream
-                                            $deflateStream.CopyTo($memoryStream)
-                                            $assemblyBytes = $memoryStream.ToArray()
-                                            $deflateStream.Close()
-                                            $memoryStream.Close()
-                                        } else {
-                                            $assemblyBytes = New-Object byte[] $stream.Length
-                                            $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
-                                        }
-                                        $stream.Close()
-                                        return [System.Reflection.Assembly]::Load($assemblyBytes)
-                                    }
-                                } catch {
-                                    # Continue la recherche
-                                }
-                            }
-                        }
-                    }
-                    
-                    # Fallback: recherche par pattern
                     foreach ($pattern in $searchPatterns) {
-                        $resourceName = $resourceNames | Where-Object { $_ -like $pattern } | Select-Object -First 1
+                        $resourceName = $resourceNames | Where-Object { $_ -like $pattern }
+                        
                         if ($resourceName) {
                             try {
-                                $stream = $script:loadedAssembly.GetManifestResourceStream($resourceName)
+                                $stream = $script:mainAssembly.GetManifestResourceStream($resourceName)
                                 if ($stream -ne $null) {
                                     $assemblyBytes = $null
+                                    
+                                    # Si c'est compressé, decompresser avec DeflateStream
                                     if ($resourceName.EndsWith(".compressed")) {
                                         $deflateStream = New-Object System.IO.Compression.DeflateStream($stream, [System.IO.Compression.CompressionMode]::Decompress)
                                         $memoryStream = New-Object System.IO.MemoryStream
@@ -160,23 +128,31 @@ class HWIDChecker {
                                         $assemblyBytes = $memoryStream.ToArray()
                                         $deflateStream.Close()
                                         $memoryStream.Close()
-                                    } else {
+                                    }
+                                    else {
                                         $assemblyBytes = New-Object byte[] $stream.Length
                                         $stream.Read($assemblyBytes, 0, $assemblyBytes.Length) | Out-Null
                                     }
+                                    
                                     $stream.Close()
                                     return [System.Reflection.Assembly]::Load($assemblyBytes)
                                 }
-                            } catch {
-                                # Continue la recherche
+                            }
+                            catch {
+                                # Ignorer les erreurs de lecture
                             }
                         }
                     }
                 }
                 return $null
             }
+            # Ajouter le handler AVANT de charger l'assembly (comme dans script.ps1)
             [System.AppDomain]::CurrentDomain.add_AssemblyResolve($onAssemblyResolve)
-            $entryPoint = $mainAssembly.EntryPoint
+            
+            # Maintenant charger l'assembly (le handler sera appele si besoin)
+            $script:mainAssembly = [System.Reflection.Assembly]::Load($bytes)
+            
+            $entryPoint = $script:mainAssembly.EntryPoint
             if ($entryPoint -ne $null) {
                 Write-Host "Execution de l'application..." -ForegroundColor Yellow
                 $entryPoint.Invoke($null, @())
